@@ -4,8 +4,12 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require('mongoose');
-const encrypt = require("mongoose-encryption");
+const encrypt = require("mongoose-encryption"); // Database encryption
+//const md5 = require('md5'); // Hash function
+const bcrypt = require('bcrypt'); //Strong Hash function + salt 
 
+
+const saltRounds = 10; // number of salt rounds
 const port = process.env.PORT || 3000;
 const url = "mongodb://localhost:27017";
 const app = express();
@@ -14,6 +18,12 @@ const app = express();
 mongoose.connect(url + "/userDB", {
     useNewUrlParser: true,
     useUnifiedTopology: true
+}, (err) => {
+    if (err) {
+        console.log(err);
+    } else {
+        console.log("Server connected to Database!");
+    }
 });
 
 const userSchema = new mongoose.Schema({
@@ -22,7 +32,7 @@ const userSchema = new mongoose.Schema({
 });
 
 
-userSchema.plugin(encrypt,{secret : process.env.SECRET ,encryptedFields: ['password']});
+//userSchema.plugin(encrypt,{secret : process.env.SECRET ,encryptedFields: ['password']});
 
 const User = mongoose.model("User", userSchema);
 
@@ -57,14 +67,23 @@ app.route('/login')
             email: req.body.username,
         }, (err, doc) => {
             if (err) console.log(err);
-            else{
-                if(doc){
-                    if(doc.password === req.body.password){
-                    res.render("secrets");
-                    }else{
-                        console.log("Incorrect password!!!");
-                    }
-                }else {
+            else {
+                if (doc) {
+
+                    bcrypt.compare(req.body.password, doc.password, function (err, result) {
+                        // res == true
+                        if (err) {
+                            console.log(err);
+                        } else {
+                            if (result) {
+                                console.log(req.body.username+" logged successfuly!!");
+                                res.render("secrets");
+                            } else {
+                                console.log("Incorrect password!!!");
+                            }
+                        }
+                    });
+                } else {
                     console.log("no such user exists or unamatched password !!");
                 }
             }
@@ -80,16 +99,23 @@ app.route('/register')
         res.render("register");
     })
     .post(function (req, res) {
-        console.log(req.body);
-        const user = new User({
-            email: req.body.username,
-            password: req.body.password
-        });
-        user.save((err) => {
-            if (err) res.send(err);
-            res.render("secrets");
-        })
 
+        console.log(req.body);
+        bcrypt.hash(req.body.password, saltRounds, function (err, hash) {
+            // Store hash in your password DB.
+            if (err) {
+                console.log("Error genrating hash!");
+            } else {
+                const user = new User({
+                    email: req.body.username,
+                    password: hash
+                });
+                user.save((err) => {
+                    if (err) res.send(err);
+                    res.render("secrets");
+                });
+            }
+        });
     })
     .delete(function (req, res) {
         //  res.redirect("/articles");
